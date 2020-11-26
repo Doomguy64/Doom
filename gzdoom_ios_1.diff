@@ -1,0 +1,1266 @@
+From 358b92d1959f14418eea4c6d3d91bc33d20e5442 Mon Sep 17 00:00:00 2001
+From: Emile Belanger <emile@Emiles-Mac-mini.local>
+Date: Sat, 16 Jan 2016 15:33:48 +0000
+Subject: [PATCH] IOS updates
+
+---
+ dumb/src/helpers/resampler.c       |   4 +-
+ src/dobject.h                      |  11 ++-
+ src/g_game.cpp                     |   4 +-
+ src/gameconfigfile.cpp             |   4 +-
+ src/gl/data/gl_vertexbuffer.cpp    |   4 +-
+ src/gl/models/gl_voxels.cpp        |   6 ++
+ src/gl/renderer/gl_renderstate.cpp |   2 +
+ src/gl/renderer/gl_renderstate.h   |   2 +-
+ src/gl/scene/gl_portal.cpp         |  18 ++--
+ src/gl/shaders/gl_shader.cpp       |  13 ++-
+ src/gl/system/gl_framebuffer.cpp   |  10 ++-
+ src/gl/system/gl_interface.cpp     |   8 +-
+ src/gl/system/gl_system.h          |  66 +++++++++++++++
+ src/gl/textures/gl_hwtexture.cpp   |   7 ++
+ src/m_specialpaths.cpp             | 167 ++++++++++++++++++++++++++++++++++++-
+ src/nodebuild_utility.cpp          |   5 ++
+ src/oplsynth/OPL3.cpp              |   4 +-
+ src/p_acs.cpp                      |  12 ++-
+ src/p_enemy.cpp                    |   6 +-
+ src/p_udmf.cpp                     |   6 +-
+ src/posix/i_system.cpp             |  23 +++--
+ src/posix/sdl/hardware.cpp         |  20 ++---
+ src/posix/sdl/i_input.cpp          |   6 +-
+ src/posix/sdl/i_main.cpp           |   2 +-
+ src/posix/sdl/sdlglvideo.cpp       |   2 +-
+ src/posix/sdl/sdlvideo.cpp         |   8 +-
+ src/r_things.cpp                   |   4 +
+ src/sound/i_sound.cpp              |   5 ++
+ src/sound/music_midi_timidity.cpp  |   7 +-
+ src/tables.h                       |   6 +-
+ src/thingdef/thingdef.h            |  21 ++++-
+ src/thingdef/thingdef_codeptr.cpp  |   8 ++
+ src/thingdef/thingdef_function.cpp |   6 +-
+ src/v_video.cpp                    |  11 ++-
+ src/zstrformat.cpp                 |   6 ++
+ 35 files changed, 437 insertions(+), 57 deletions(-)
+
+diff --git a/dumb/src/helpers/resampler.c b/dumb/src/helpers/resampler.c
+index 3ba288e..eb7e160 100644
+--- a/dumb/src/helpers/resampler.c
++++ b/dumb/src/helpers/resampler.c
+@@ -8,11 +8,13 @@
+ #endif
+ #ifdef __APPLE__
+ #include <TargetConditionals.h>
+-#if TARGET_CPU_ARM || TARGET_CPU_ARM64
++#if TARGET_CPU_ARM || TARGET_CPU_ARM64 
++#ifndef __IOS__
+ #include <arm_neon.h>
+ #define RESAMPLER_NEON
+ #endif
+ #endif
++#endif
+ 
+ #ifdef _MSC_VER
+ #define ALIGNED     _declspec(align(16))
+diff --git a/src/dobject.h b/src/dobject.h
+index 40b47ee..6c0df2a 100644
+--- a/src/dobject.h
++++ b/src/dobject.h
+@@ -174,7 +174,13 @@ private: \
+ #	pragma data_seg()
+ #	define _DECLARE_TI(cls) __declspec(allocate(".creg$u")) ClassReg *cls::RegistrationInfoPtr = &cls::RegistrationInfo;
+ #else
+-#	define _DECLARE_TI(cls) ClassReg *cls::RegistrationInfoPtr __attribute__((section(SECTION_CREG))) = &cls::RegistrationInfo;
++
++#ifdef __IOS__  //Fuck! finally fixed this, IOS linker stripping out the classes! Emile.
++#	define _DECLARE_TI(cls) ClassReg *cls::RegistrationInfoPtr __attribute__((section(SECTION_CREG))) __attribute__((used)) = &cls::RegistrationInfo;
++#else
++#	define _DECLARE_TI(cls) ClassReg *cls::RegistrationInfoPtr __attribute__((section(SECTION_CREG)))  = &cls::RegistrationInfo;
++#endif
++
+ #endif
+ 
+ #define _IMP_PCLASS(cls,ptrs,create) \
+@@ -198,7 +204,8 @@ private: \
+ 
+ #define IMPLEMENT_CLASS(cls) \
+ 	_IMP_CREATE_OBJ(cls) \
+-	_IMP_PCLASS(cls,NULL,cls::InPlaceConstructor) 
++        _IMP_PCLASS(cls,NULL,cls::InPlaceConstructor)
++        
+ 
+ #define IMPLEMENT_ABSTRACT_CLASS(cls) \
+ 	_IMP_PCLASS(cls,NULL,NULL)
+diff --git a/src/g_game.cpp b/src/g_game.cpp
+index 8101ca2..8436738 100644
+--- a/src/g_game.cpp
++++ b/src/g_game.cpp
+@@ -27,7 +27,7 @@
+ #include <stdio.h>
+ #include <stddef.h>
+ #include <time.h>
+-#ifdef __APPLE__
++#if defined(__APPLE__) && !defined(__IOS__)
+ #include <CoreServices/CoreServices.h>
+ #endif
+ 
+@@ -143,7 +143,7 @@ gamestate_t 	gamestate = GS_STARTUP;
+ 
+ int 			paused;
+ bool			pauseext;
+-bool 			sendpause;				// send a pause event next tic 
++bool 			sendpause;				// send a pause event next tic
+ bool			sendsave;				// send a save event next tic 
+ bool			sendturn180;			// [RH] send a 180 degree turn next tic
+ bool 			usergame;				// ok to save / end game
+diff --git a/src/gameconfigfile.cpp b/src/gameconfigfile.cpp
+index 3d396d9..16aa4ef 100644
+--- a/src/gameconfigfile.cpp
++++ b/src/gameconfigfile.cpp
+@@ -35,7 +35,7 @@
+ #include <stdio.h>
+ #include <time.h>
+ 
+-#ifdef __APPLE__
++#if defined(__APPLE__) && !defined(__IOS__)
+ #include <CoreServices/CoreServices.h>
+ #endif
+ 
+@@ -101,7 +101,7 @@ FGameConfigFile::FGameConfigFile ()
+ 		SetSection ("IWADSearch.Directories", true);
+ 		SetValueForKey ("Path", ".", true);
+ 		SetValueForKey ("Path", "$DOOMWADDIR", true);
+-#ifdef __APPLE__
++#if defined(__APPLE__) && !defined(__IOS__)
+ 		char cpath[PATH_MAX];
+ 		FSRef folder;
+ 		
+diff --git a/src/gl/data/gl_vertexbuffer.cpp b/src/gl/data/gl_vertexbuffer.cpp
+index c07b6ce..cac10d8 100644
+--- a/src/gl/data/gl_vertexbuffer.cpp
++++ b/src/gl/data/gl_vertexbuffer.cpp
+@@ -265,7 +265,7 @@ void FFlatVertexBuffer::MapVBO()
+ 	if (map == NULL)
+ 	{
+ 		glBindBuffer(GL_ARRAY_BUFFER, vbo_id);
+-		map = (FFlatVertex*)glMapBufferRange(GL_ARRAY_BUFFER, 0, vbo_shadowdata.Size() * sizeof(FFlatVertex), 
++		map = (FFlatVertex*)glMapBufferRange(GL_ARRAY_BUFFER, 0, vbo_shadowdata.Size() * sizeof(FFlatVertex),
+ 			GL_MAP_WRITE_BIT|GL_MAP_FLUSH_EXPLICIT_BIT|GL_MAP_UNSYNCHRONIZED_BIT);
+ 	}
+ }
+@@ -359,7 +359,9 @@ void FFlatVertexBuffer::BindVBO()
+ 		glTexCoordPointer(2,GL_FLOAT, sizeof(FFlatVertex), &VTO->u);
+ 		glEnableClientState(GL_VERTEX_ARRAY);
+ 		glEnableClientState(GL_TEXTURE_COORD_ARRAY);
++#ifndef USE_GLES
+ 		glDisableClientState(GL_INDEX_ARRAY);
++#endif
+ 	}
+ }
+ 
+diff --git a/src/gl/models/gl_voxels.cpp b/src/gl/models/gl_voxels.cpp
+index 771546c..083c226 100644
+--- a/src/gl/models/gl_voxels.cpp
++++ b/src/gl/models/gl_voxels.cpp
+@@ -285,7 +285,9 @@ void FVoxelVertexBuffer::BindVBO()
+ 	glTexCoordPointer(2,GL_FLOAT, sizeof(FVoxelVertex), &VVO->u);
+ 	glEnableClientState(GL_VERTEX_ARRAY);
+ 	glEnableClientState(GL_TEXTURE_COORD_ARRAY);
++#ifndef USE_GLES
+ 	glEnableClientState(GL_INDEX_ARRAY);
++#endif
+ }
+ 
+ 
+@@ -524,7 +526,11 @@ void FVoxelModel::RenderFrame(FTexture * skin, int frame, int cm, int translatio
+ 	if (mVBO != NULL)
+ 	{
+ 		mVBO->BindVBO();
++#ifdef USE_GLES
++        glDrawElements(GL_QUADS, mIndices.Size(), GL_UNSIGNED_SHORT, 0);
++#else
+ 		glDrawElements(GL_QUADS, mIndices.Size(), mVBO->IsInt()? GL_UNSIGNED_INT:GL_UNSIGNED_SHORT, 0);
++#endif
+ 		GLRenderer->mVBO->BindVBO();
+ 		return;
+ 	}
+diff --git a/src/gl/renderer/gl_renderstate.cpp b/src/gl/renderer/gl_renderstate.cpp
+index 011938d..de1f7d3 100644
+--- a/src/gl/renderer/gl_renderstate.cpp
++++ b/src/gl/renderer/gl_renderstate.cpp
+@@ -146,6 +146,7 @@ int FRenderState::SetupShader(bool cameratexture, int &shaderindex, int &cm, flo
+ 
+ bool FRenderState::ApplyShader()
+ {
++#ifndef USE_GLES
+ 	bool useshaders = false;
+ 	FShader *activeShader = NULL;
+ 
+@@ -263,6 +264,7 @@ bool FRenderState::ApplyShader()
+ 
+ 		return true;
+ 	}
++#endif
+ 	return false;
+ }
+ 
+diff --git a/src/gl/renderer/gl_renderstate.h b/src/gl/renderer/gl_renderstate.h
+index 5e95cc2..b9bd93f 100644
+--- a/src/gl/renderer/gl_renderstate.h
++++ b/src/gl/renderer/gl_renderstate.h
+@@ -301,7 +301,7 @@ public:
+ 		}
+ 		else
+ 		{
+-			::glBlendEquation(eq);
++            ::glBlendEquation(eq);
+ 		}
+ 	}
+ 
+diff --git a/src/gl/scene/gl_portal.cpp b/src/gl/scene/gl_portal.cpp
+index 8425377..13fda56 100644
+--- a/src/gl/scene/gl_portal.cpp
++++ b/src/gl/scene/gl_portal.cpp
+@@ -198,7 +198,7 @@ bool GLPortal::Start(bool usestencil, bool doquery)
+ 				glDepthMask(false);							// don't write to Z-buffer!
+ 				if (!NeedDepthBuffer()) doquery = false;		// too much overhead and nothing to gain.
+ 				else if (gl_noquery) doquery = false;
+-
++#ifndef USE_GLES
+ 				// If occlusion query is supported let's use it to avoid rendering portals that aren't visible
+ 				if (!QueryObject) glGenQueries(1, &QueryObject);
+ 				if (QueryObject)
+@@ -206,11 +206,11 @@ bool GLPortal::Start(bool usestencil, bool doquery)
+ 					glBeginQuery(GL_SAMPLES_PASSED_ARB, QueryObject);
+ 				}
+ 				else doquery = false;	// some kind of error happened
+-
++#endif
+ 				DrawPortalStencil();
+-
++#ifndef USE_GLES
+ 				glEndQuery(GL_SAMPLES_PASSED_ARB);
+-
++#endif
+ 				// Clear Z-buffer
+ 				glStencilFunc(GL_EQUAL, recursion + 1, ~0);		// draw sky into stencil
+ 				glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);		// this stage doesn't modify the stencil
+@@ -226,9 +226,9 @@ bool GLPortal::Start(bool usestencil, bool doquery)
+ 				glDepthRange(0, 1);
+ 
+ 				GLuint sampleCount;
+-
++#ifndef USE_GLES
+ 				glGetQueryObjectuiv(QueryObject, GL_QUERY_RESULT_ARB, &sampleCount);
+-
++#endif
+ 				if (sampleCount == 0) 	// not visible
+ 				{
+ 					// restore default stencil op.
+@@ -609,9 +609,9 @@ void GLSkyboxPortal::DrawContents()
+ 	extralight = 0;
+ 
+ 	PlaneMirrorMode=0;
+-
++#ifndef USE_GLES
+ 	glDisable(GL_DEPTH_CLAMP_NV);
+-
++#endif
+ 	viewx = origin->PrevX + FixedMul(r_TicFrac, origin->x - origin->PrevX);
+ 	viewy = origin->PrevY + FixedMul(r_TicFrac, origin->y - origin->PrevY);
+ 	viewz = origin->PrevZ + FixedMul(r_TicFrac, origin->z - origin->PrevZ);
+@@ -640,7 +640,9 @@ void GLSkyboxPortal::DrawContents()
+ 	GLRenderer->DrawScene();
+ 	origin->flags&=~MF_JUSTHIT;
+ 	inskybox=false;
++#ifndef USE_GLES
+ 	glEnable(GL_DEPTH_CLAMP_NV);
++#endif
+ 	skyboxrecursion--;
+ 
+ 	PlaneMirrorMode=old_pm;
+diff --git a/src/gl/shaders/gl_shader.cpp b/src/gl/shaders/gl_shader.cpp
+index ef0f84f..7f81d2f 100644
+--- a/src/gl/shaders/gl_shader.cpp
++++ b/src/gl/shaders/gl_shader.cpp
+@@ -76,6 +76,7 @@ extern long gl_frameMS;
+ 
+ bool FShader::Load(const char * name, const char * vert_prog_lump, const char * frag_prog_lump, const char * proc_prog_lump, const char * defines)
+ {
++#ifndef USE_GLES
+ 	static char buffer[10000];
+ 	FString error;
+ 
+@@ -195,6 +196,7 @@ bool FShader::Load(const char * name, const char * vert_prog_lump, const char *
+ 		glUseProgram(0);
+ 		return !!linked;
+ 	}
++#endif
+ 	return false;
+ }
+ 
+@@ -206,9 +208,11 @@ bool FShader::Load(const char * name, const char * vert_prog_lump, const char *
+ 
+ FShader::~FShader()
+ {
++#ifndef USE_GLES
+ 	glDeleteProgram(hShader);
+ 	glDeleteShader(hVertProg);
+ 	glDeleteShader(hFragProg);
++#endif
+ }
+ 
+ 
+@@ -220,8 +224,10 @@ FShader::~FShader()
+ 
+ bool FShader::Bind(float Speed)
+ {
++#ifndef USE_GLES
+ 	GLRenderer->mShaderManager->SetActiveShader(this);
+ 	if (timer_index >=0 && Speed > 0.f) glUniform1f(timer_index, gl_frameMS*Speed/1000.f);
++#endif
+ 	return true;
+ }
+ 
+@@ -382,8 +388,9 @@ FShaderContainer::~FShaderContainer()
+ 
+ FShader *FShaderContainer::Bind(int cm, bool glowing, float Speed, bool lights)
+ {
+-	FShader *sh=NULL;
+ 
++	FShader *sh=NULL;
++#ifndef USE_GLES
+ 	if (cm == CM_FOGLAYER)
+ 	{
+ 		if (shader_fl)
+@@ -422,7 +429,9 @@ FShader *FShaderContainer::Bind(int cm, bool glowing, float Speed, bool lights)
+ 			}
+ 		}
+ 	}
++#endif
+ 	return sh;
++
+ }
+ 
+ 
+@@ -603,12 +612,14 @@ int FShaderManager::Find(const char * shn)
+ 
+ void FShaderManager::SetActiveShader(FShader *sh)
+ {
++#ifndef USE_GLES
+ 	// shadermodel needs to be tested here because without it UseProgram will be NULL.
+ 	if (gl.shadermodel > 0 && mActiveShader != sh)
+ 	{
+ 		glUseProgram(sh == NULL? 0 : sh->GetHandle());
+ 		mActiveShader = sh;
+ 	}
++#endif
+ }
+ 
+ //==========================================================================
+diff --git a/src/gl/system/gl_framebuffer.cpp b/src/gl/system/gl_framebuffer.cpp
+index bd713bb..238d9eb 100644
+--- a/src/gl/system/gl_framebuffer.cpp
++++ b/src/gl/system/gl_framebuffer.cpp
+@@ -118,11 +118,13 @@ void OpenGLFrameBuffer::InitializeState()
+ {
+ 	static bool first=true;
+ 
++#ifndef USE_GLES
+ 	if (first)
+ 	{
+ 		glewInit();
+ 	}
+-
++#endif
++    
+ 	gl_LoadExtensions();
+ 	Super::InitializeState();
+ 	if (first)
+@@ -143,16 +145,22 @@ void OpenGLFrameBuffer::InitializeState()
+ 	glEnable(GL_ALPHA_TEST);
+ 	glDisable(GL_CULL_FACE);
+ 	glDisable(GL_POLYGON_OFFSET_FILL);
++#ifndef USE_GLES
+ 	glEnable(GL_POLYGON_OFFSET_LINE);
++#endif
+ 	glEnable(GL_BLEND);
++#ifndef USE_GLES
+ 	glEnable(GL_DEPTH_CLAMP_NV);
++#endif
+ 	glDisable(GL_DEPTH_TEST);
+ 	glEnable(GL_TEXTURE_2D);
+ 	glDisable(GL_LINE_SMOOTH);
+ 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+ 	glAlphaFunc(GL_GEQUAL,0.5f);
+ 	glHint(GL_LINE_SMOOTH_HINT, GL_NICEST);
++#ifndef USE_GLES
+ 	glHint(GL_POLYGON_SMOOTH_HINT, GL_NICEST);
++#endif
+ 	glHint(GL_PERSPECTIVE_CORRECTION_HINT, GL_NICEST);
+ 
+ 	// This was to work around a bug in some older driver. Probably doesn't make sense anymore.
+diff --git a/src/gl/system/gl_interface.cpp b/src/gl/system/gl_interface.cpp
+index 287cdc1..0e525c1 100644
+--- a/src/gl/system/gl_interface.cpp
++++ b/src/gl/system/gl_interface.cpp
+@@ -148,6 +148,7 @@ void gl_LoadExtensions()
+ 	glGetIntegerv(GL_MAX_TEXTURE_SIZE,&gl.max_texturesize);
+ 	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+ 	
++#ifndef USE_GLES
+ 	if (gl.flags & RFL_GL_20)
+ 	{
+ 		// Rules:
+@@ -166,7 +167,8 @@ void gl_LoadExtensions()
+ 		if (Args->CheckParm("-sm2") && gl.shadermodel > 2) gl.shadermodel = 2;
+ 		else if (Args->CheckParm("-sm3") && gl.shadermodel > 3) gl.shadermodel = 3;
+ 	}
+-
++#endif
++    
+ 	if (CheckExtension("GL_ARB_map_buffer_range")) 
+ 	{
+ 		gl.flags|=RFL_MAP_BUFFER_RANGE;
+@@ -190,12 +192,15 @@ void gl_PrintStartupLog()
+ 	Printf ("GL_VENDOR: %s\n", glGetString(GL_VENDOR));
+ 	Printf ("GL_RENDERER: %s\n", glGetString(GL_RENDERER));
+ 	Printf ("GL_VERSION: %s\n", glGetString(GL_VERSION));
++#ifndef USE_GLES
+ 	Printf ("GL_SHADING_LANGUAGE_VERSION: %s\n", glGetString(GL_SHADING_LANGUAGE_VERSION));
++#endif
+ 	Printf ("GL_EXTENSIONS: %s\n", glGetString(GL_EXTENSIONS));
+ 	int v = 0;
+ 
+ 	glGetIntegerv(GL_MAX_TEXTURE_SIZE, &v);
+ 	Printf("Max. texture size: %d\n", v);
++#ifndef USE_GLES
+ 	glGetIntegerv(GL_MAX_TEXTURE_IMAGE_UNITS, &v);
+ 	Printf ("Max. texture units: %d\n", v);
+ 	glGetIntegerv(GL_MAX_FRAGMENT_UNIFORM_COMPONENTS, &v);
+@@ -209,6 +214,7 @@ void gl_PrintStartupLog()
+ 	Printf ("Max. combined uniforms: %d\n", v);
+ 	glGetIntegerv(GL_MAX_COMBINED_UNIFORM_BLOCKS, &v);
+ 	Printf ("Max. combined uniform blocks: %d\n", v);
++#endif
+ 
+ }
+ 
+diff --git a/src/gl/system/gl_system.h b/src/gl/system/gl_system.h
+index 9597b6c..0d01d24 100644
+--- a/src/gl/system/gl_system.h
++++ b/src/gl/system/gl_system.h
+@@ -67,6 +67,69 @@
+ #include <fcntl.h>
+ 
+ //GL headers
++#ifdef USE_GLES
++
++/*
++#include <GL/gl.h>
++#define GL_GLEXT_PROTOTYPES
++#include <GL/glext.h>
++void glVertexAttrib1f(	GLuint index,
++                      GLfloat v0);
++
++*/
++#include <OpenGLES/ES1/gl.h>
++#include <OpenGLES/ES1/glext.h>
++#include "jwzgles.h"
++
++
++#define glGenFramebuffersEXT glGenFramebuffersOES
++#define glDeleteFramebuffersEXT glDeleteFramebuffersOES
++#define glBindFramebufferEXT glBindFramebufferOES
++
++#define GL_FRAMEBUFFER_BINDING_EXT GL_FRAMEBUFFER_BINDING_OES
++#define GL_FRAMEBUFFER_EXT GL_FRAMEBUFFER_OES
++#define GL_FRAMEBUFFER GL_FRAMEBUFFER_OES
++
++
++#define glGenRenderbuffersEXT glGenRenderbuffersOES
++#define glBindRenderbufferEXT glBindRenderbufferOES
++#define glDeleteRenderbuffersEXT glDeleteRenderbuffersOES
++#define glRenderbufferStorageEXT glRenderbufferStorageOES
++
++#define GL_RENDERBUFFER_EXT GL_RENDERBUFFER_OES
++#define GL_DEPTH24_STENCIL8_EXT GL_DEPTH24_STENCIL8_OES
++#define GL_COLOR_ATTACHMENT0_EXT GL_COLOR_ATTACHMENT0_OES
++#define GL_DEPTH_ATTACHMENT_EXT GL_DEPTH_ATTACHMENT_OES
++#define GL_STENCIL_ATTACHMENT_EXT GL_STENCIL_ATTACHMENT_OES
++
++#define glFramebufferTexture2DEXT glFramebufferTexture2DOES
++#define glFramebufferRenderbufferEXT glFramebufferRenderbufferOES
++
++
++#define glFlushMappedBufferRange glFlushMappedBufferRangeEXT
++#define glMapBufferRange glMapBufferRangeEXT
++#define glUnmapBuffer glUnmapBufferOES
++
++#define GL_MAP_WRITE_BIT 0
++#define GL_MAP_FLUSH_EXPLICIT_BIT 0
++#define GL_MAP_UNSYNCHRONIZED_BIT 0
++
++#define GL_ALPHA8 GL_ALPHA8_EXT
++#define GL_RGBA8 GL_RGBA8_OES
++
++//TODO
++#define GL_RGB5_A1 GL_RGBA
++#define GL_RGBA4 GL_RGBA
++#define GL_RGBA2 GL_RGBA
++// [BB] Added compressed texture formats.
++#define GL_COMPRESSED_RGBA_ARB GL_RGBA
++#define GL_COMPRESSED_RGBA_S3TC_DXT1_EXT GL_RGBA
++#define GL_COMPRESSED_RGBA_S3TC_DXT3_EXT GL_RGBA
++#define GL_COMPRESSED_RGBA_S3TC_DXT5_EXT GL_RGBA
++
++
++#else
++
+ #include <GL/glew.h>
+ 
+ #if defined(__APPLE__)
+@@ -79,6 +142,9 @@
+ 	#undef DWORD
+ #endif
+ 
++
++#endif
++
+ #ifdef _WIN32
+ #define DWORD WINDOWS_DWORD	// I don't want to depend on this throughout the GL code!
+ //#include "gl/api/wglext.h"
+diff --git a/src/gl/textures/gl_hwtexture.cpp b/src/gl/textures/gl_hwtexture.cpp
+index 7b9f4c4..c2fbc2b 100644
+--- a/src/gl/textures/gl_hwtexture.cpp
++++ b/src/gl/textures/gl_hwtexture.cpp
+@@ -71,8 +71,15 @@ unsigned int FHardwareTexture::lastbound[FHardwareTexture::MAX_TEXTURES];
+ //===========================================================================
+ int FHardwareTexture::GetTexDimension(int value)
+ {
++#ifdef USE_GLES9
++    int i=1;
++    while (i<value) i+=i;
++    //if (i>2048) i = 2048; //Dont go above this size
++    return i;
++#else
+ 	if (value > gl.max_texturesize) return gl.max_texturesize;
+ 	return value;
++#endif
+ }
+ 
+ 
+diff --git a/src/m_specialpaths.cpp b/src/m_specialpaths.cpp
+index 7a48a2b..7b1ad0c 100644
+--- a/src/m_specialpaths.cpp
++++ b/src/m_specialpaths.cpp
+@@ -1,4 +1,4 @@
+-#ifdef __APPLE__
++#if defined(__APPLE__) && !defined(__IOS__)
+ #include <CoreServices/CoreServices.h>
+ #endif
+ 
+@@ -12,7 +12,7 @@
+ #include "cmdlib.h"
+ #include "m_misc.h"
+ 
+-#if !defined(__APPLE__) && !defined(_WIN32)
++#if !defined(__APPLE__) && !defined(_WIN32) || defined(__IOS__)
+ #include <sys/stat.h>
+ #include <sys/types.h>
+ #include "i_system.h"
+@@ -317,7 +317,7 @@ FString M_GetSavegamesPath()
+ 	return path;
+ }
+ 
+-#elif defined(__APPLE__)
++#elif defined(__APPLE__) && !defined(__IOS__)
+ 
+ //===========================================================================
+ //
+@@ -464,6 +464,167 @@ FString M_GetSavegamesPath()
+ 	}
+ 	return path;
+ }
++#elif __IOS__
++FString GetUserFile (const char *file)
++{
++
++    return file;
++    
++    FString path;
++    struct stat info;
++    
++    path = NicePath("~/" GAME_DIR "/");
++    
++    if (stat (path, &info) == -1)
++    {
++        struct stat extrainfo;
++        
++        // Sanity check for ~/.config
++        FString configPath = NicePath("~/.config/");
++        if (stat (configPath, &extrainfo) == -1)
++        {
++            if (mkdir (configPath, S_IRUSR | S_IWUSR | S_IXUSR) == -1)
++            {
++                I_FatalError ("Failed to create ~/.config directory:\n%s", strerror(errno));
++            }
++        }
++        else if (!S_ISDIR(extrainfo.st_mode))
++        {
++            I_FatalError ("~/.config must be a directory");
++        }
++        
++        // This can be removed after a release or two
++        // Transfer the old zdoom directory to the new location
++        bool moved = false;
++        FString oldpath = NicePath("~/." GAMENAMELOWERCASE "/");
++        if (stat (oldpath, &extrainfo) != -1)
++        {
++            if (rename(oldpath, path) == -1)
++            {
++                I_Error ("Failed to move old " GAMENAMELOWERCASE " directory (%s) to new location (%s).",
++                         oldpath.GetChars(), path.GetChars());
++            }
++            else
++                moved = true;
++        }
++        
++        if (!moved && mkdir (path, S_IRUSR | S_IWUSR | S_IXUSR) == -1)
++        {
++            I_FatalError ("Failed to create %s directory:\n%s",
++                          path.GetChars(), strerror (errno));
++        }
++    }
++    else
++    {
++        if (!S_ISDIR(info.st_mode))
++        {
++            I_FatalError ("%s must be a directory", path.GetChars());
++        }
++    }
++    path += file;
++    return path;
++}
++
++//===========================================================================
++//
++// M_GetCachePath														Unix
++//
++// Returns the path for cache GL nodes.
++//
++//===========================================================================
++
++FString M_GetCachePath(bool create)
++{
++    // Don't use GAME_DIR and such so that ZDoom and its child ports can
++    // share the node cache.
++    FString path = NicePath("~/.config/zdoom/cache");
++    if (create)
++    {
++        CreatePath(path);
++    }
++    return path;
++}
++
++//===========================================================================
++//
++// M_GetAutoexecPath													Unix
++//
++// Returns the expected location of autoexec.cfg.
++//
++//===========================================================================
++
++FString M_GetAutoexecPath()
++{
++    return GetUserFile("autoexec.cfg");
++}
++
++//===========================================================================
++//
++// M_GetCajunPath														Unix
++//
++// Returns the location of the Cajun Bot definitions.
++//
++//===========================================================================
++
++FString M_GetCajunPath(const char *botfilename)
++{
++    FString path;
++    
++    // Check first in ~/.config/zdoom/botfilename.
++    path = GetUserFile(botfilename);
++    if (!FileExists(path))
++    {
++        // Then check in SHARE_DIR/botfilename.
++        path = SHARE_DIR;
++        path << botfilename;
++        if (!FileExists(path))
++        {
++            path = "";
++        }
++    }
++    return path;
++}
++
++//===========================================================================
++//
++// M_GetConfigPath														Unix
++//
++// Returns the path to the config file. On Windows, this can vary for reading
++// vs writing. i.e. If $PROGDIR/zdoom-<user>.ini does not exist, it will try
++// to read from $PROGDIR/zdoom.ini, but it will never write to zdoom.ini.
++//
++//===========================================================================
++
++FString M_GetConfigPath(bool for_reading)
++{
++    return GetUserFile(GAMENAMELOWERCASE ".ini");
++}
++
++//===========================================================================
++//
++// M_GetScreenshotsPath													Unix
++//
++// Returns the path to the default screenshots directory.
++//
++//===========================================================================
++
++FString M_GetScreenshotsPath()
++{
++    return NicePath("~/" GAME_DIR "/screenshots/");
++}
++
++//===========================================================================
++//
++// M_GetSavegamesPath													Unix
++//
++// Returns the path to the default save games directory.
++//
++//===========================================================================
++
++FString M_GetSavegamesPath()
++{
++    return NicePath("~/" GAME_DIR);
++}
+ 
+ #else // Linux, et al.
+ 
+diff --git a/src/nodebuild_utility.cpp b/src/nodebuild_utility.cpp
+index 14ab7be..3cef78c 100644
+--- a/src/nodebuild_utility.cpp
++++ b/src/nodebuild_utility.cpp
+@@ -76,7 +76,12 @@ angle_t FNodeBuilder::PointToAngle (fixed_t x, fixed_t y)
+ #else // !__APPLE__ || __llvm__
+ 	double ang = atan2 (double(y), double(x));
+ #endif // __APPLE__ && !__llvm__
++    
++#ifdef __arm__
++    return (angle_t((int)(ang * rad2bam))) << 1;
++#else
+ 	return angle_t(ang * rad2bam) << 1;
++#endif
+ }
+ 
+ void FNodeBuilder::FindUsedVertices (vertex_t *oldverts, int max)
+diff --git a/src/oplsynth/OPL3.cpp b/src/oplsynth/OPL3.cpp
+index c4806a6..24b19fc 100644
+--- a/src/oplsynth/OPL3.cpp
++++ b/src/oplsynth/OPL3.cpp
+@@ -348,7 +348,9 @@ public:
+ 	double vibratoTable[2][vibratoTableLength];
+ 
+ 	// First array used when AM = 0 and second array used when AM = 1.
+-	double tremoloTable[2][tremoloTableLength];
++	//double tremoloTable[2][tremoloTableLength];
++    double tremoloTable[2][14000];
++    
+ 
+ 	static double calculateIncrement(double begin, double end, double period) {
+ 		return (end-begin)/OPL_SAMPLE_RATE * (1/period);
+diff --git a/src/p_acs.cpp b/src/p_acs.cpp
+index f974488..e449d6f 100644
+--- a/src/p_acs.cpp
++++ b/src/p_acs.cpp
+@@ -8741,11 +8741,19 @@ scriptwait:
+ 			break;
+ 
+ 		case PCD_SIN:
+-			STACK(1) = finesine[angle_t(STACK(1)<<16)>>ANGLETOFINESHIFT];
++#ifdef __arm__
++            STACK(1) = finesine[angle_t((int)(STACK(1)<<16))>>ANGLETOFINESHIFT];
++#else
++            STACK(1) = finesine[angle_t(STACK(1)<<16)>>ANGLETOFINESHIFT];
++#endif
+ 			break;
+ 
+ 		case PCD_COS:
+-			STACK(1) = finecosine[angle_t(STACK(1)<<16)>>ANGLETOFINESHIFT];
++#ifdef __arm__
++            STACK(1) = finecosine[angle_t((int)(STACK(1)<<16))>>ANGLETOFINESHIFT];
++#else
++            STACK(1) = finecosine[angle_t(STACK(1)<<16)>>ANGLETOFINESHIFT];
++#endif
+ 			break;
+ 
+ 		case PCD_VECTORANGLE:
+diff --git a/src/p_enemy.cpp b/src/p_enemy.cpp
+index 5291101..4d3372c 100644
+--- a/src/p_enemy.cpp
++++ b/src/p_enemy.cpp
+@@ -1865,7 +1865,11 @@ DEFINE_ACTION_FUNCTION_PARAMS(AActor, A_LookEx)
+ 
+ 	AActor *targ = NULL; // Shuts up gcc
+ 	fixed_t dist;
+-	angle_t fov = (fov_f == 0) ? ANGLE_180 : angle_t(fov_f * ANGLE_90 / 90);
++#ifdef __arm__
++    angle_t fov = (fov_f == 0) ? ANGLE_180 : angle_t((int)(fov_f * ANGLE_90 / 90));
++#else
++    angle_t fov = (fov_f == 0) ? ANGLE_180 : angle_t(fov_f * ANGLE_90 / 90);
++#endif
+ 	FLookExParams params = { fov, minseedist, maxseedist, maxheardist, flags, seestate };
+ 
+ 	if (self->flags5 & MF5_INCONVERSATION)
+diff --git a/src/p_udmf.cpp b/src/p_udmf.cpp
+index db0c952..d8c86b5 100644
+--- a/src/p_udmf.cpp
++++ b/src/p_udmf.cpp
+@@ -258,7 +258,11 @@ fixed_t UDMFParserBase::CheckFixed(const char *key)
+ 
+ angle_t UDMFParserBase::CheckAngle(const char *key)
+ {
+-	return angle_t(CheckFloat(key) * ANGLE_90 / 90.);
++#ifdef __arm__
++    return angle_t((int)(CheckFloat(key) * ANGLE_90 / 90.));
++#else
++    return angle_t(CheckFloat(key) * ANGLE_90 / 90.);
++#endif
+ }
+ 
+ bool UDMFParserBase::CheckBool(const char *key)
+diff --git a/src/posix/i_system.cpp b/src/posix/i_system.cpp
+index 84b9537..1c68849 100644
+--- a/src/posix/i_system.cpp
++++ b/src/posix/i_system.cpp
+@@ -71,10 +71,11 @@
+ #include "m_fixed.h"
+ #include "g_level.h"
+ 
+-#ifdef __APPLE__
++#if defined(__APPLE__) && !defined(__IOS__)
+ #include <ApplicationServices/ApplicationServices.h>
+ #endif // __APPLE__
+ 
++
+ EXTERN_CVAR (String, language)
+ 
+ extern "C"
+@@ -194,7 +195,7 @@ void STACK_ARGS I_FatalError (const char *error, ...)
+ 		index = vsnprintf (errortext, MAX_ERRORTEXT, error, argptr);
+ 		va_end (argptr);
+ 
+-#ifdef __APPLE__
++#if defined(__APPLE__) && !defined(__IOS__)
+ 		Mac_I_FatalError(errortext);
+ #endif // __APPLE__		
+ 		
+@@ -501,7 +502,7 @@ int I_PickIWad (WadStuff *wads, int numwads, bool showwin, int defaultiwad)
+ 	{
+ 		return I_PickIWad_Gtk (wads, numwads, showwin, defaultiwad);
+ 	}
+-#elif defined(__APPLE__)
++#elif defined(__APPLE__) && !defined(__IOS__)
+ 	return I_PickIWad_Cocoa (wads, numwads, showwin, defaultiwad);
+ #endif
+ 	
+@@ -530,7 +531,7 @@ bool I_WriteIniFailed ()
+ 
+ static const char *pattern;
+ 
+-#if defined(__APPLE__) && MAC_OS_X_VERSION_MAX_ALLOWED < 1080
++#if defined(__APPLE__) && !defined(__IOS__) && MAC_OS_X_VERSION_MAX_ALLOWED < 1080
+ static int matchfile (struct dirent *ent)
+ #else
+ static int matchfile (const struct dirent *ent)
+@@ -601,7 +602,7 @@ int I_FindAttr (findstate_t *fileinfo)
+ 	return 0;
+ }
+ 
+-#ifdef __APPLE__
++#if defined(__APPLE__) && !defined(__IOS__)
+ static PasteboardRef s_clipboard;
+ 
+ static CFDataRef GetPasteboardData(const PasteboardItemID itemID, const CFStringRef flavorType)
+@@ -634,7 +635,7 @@ void I_PutInClipboard (const char *str)
+ 		}
+ 		*/
+ 	}
+-#elif defined __APPLE__
++#elif defined(__APPLE__) && !defined(__IOS__)
+ 	if (NULL == s_clipboard)
+ 	{
+ 		PasteboardCreate(kPasteboardClipboard, &s_clipboard);
+@@ -672,7 +673,7 @@ FString I_GetFromClipboard (bool use_primary_selection)
+ 			}
+ 		}
+ 	}
+-#elif defined __APPLE__
++#elif defined(__APPLE__) && !defined(__IOS__)
+ 	FString result;
+ 
+ 	if (NULL == s_clipboard)
+@@ -764,3 +765,11 @@ TArray<FString> I_GetGogPaths()
+     // GOG's Doom games are Windows only at the moment
+     return TArray<FString>();
+ }
++
++#ifdef __IOS__
++TArray<FString> I_GetSteamPath()
++{
++    // GOG's Doom games are Windows only at the moment
++    return TArray<FString>();
++}
++#endif
+diff --git a/src/posix/sdl/hardware.cpp b/src/posix/sdl/hardware.cpp
+index 83c855d..9c96bc5 100644
+--- a/src/posix/sdl/hardware.cpp
++++ b/src/posix/sdl/hardware.cpp
+@@ -99,20 +99,20 @@ void I_ShutdownGraphics ()
+ 	}
+ 	if (Video)
+ 		delete Video, Video = NULL;
+-
+-	SDL_QuitSubSystem (SDL_INIT_VIDEO);
++
++	SDL_QuitSubSystem (SDL_INIT_VIDEO);
+ }
+ 
+ void I_InitGraphics ()
+ {
+-	if (SDL_InitSubSystem (SDL_INIT_VIDEO) < 0)
+-	{
+-		I_FatalError ("Could not initialize SDL video:\n%s\n", SDL_GetError());
+-		return;
+-	}
+-
+-	Printf("Using video driver %s\n", SDL_GetCurrentVideoDriver());
+-
++	if (SDL_InitSubSystem (SDL_INIT_VIDEO) < 0)
++	{
++		I_FatalError ("Could not initialize SDL video:\n%s\n", SDL_GetError());
++		return;
++	}
++
++	Printf("Using video driver %s\n", SDL_GetCurrentVideoDriver());
++
+ 	UCVarValue val;
+ 
+ 	val.Bool = !!Args->CheckParm ("-devparm");
+diff --git a/src/posix/sdl/i_input.cpp b/src/posix/sdl/i_input.cpp
+index 372b234..6ae2146 100644
+--- a/src/posix/sdl/i_input.cpp
++++ b/src/posix/sdl/i_input.cpp
+@@ -275,7 +275,9 @@ void MessagePump (const SDL_Event &sev)
+ 		{
+ 			case SDL_WINDOWEVENT_FOCUS_GAINED:
+ 			case SDL_WINDOWEVENT_FOCUS_LOST:
+-				S_SetSoundPaused(sev.window.event == SDL_WINDOWEVENT_FOCUS_GAINED);
++#ifndef __IOS__ //else pauses always
++                S_SetSoundPaused(sev.window.event == SDL_WINDOWEVENT_FOCUS_GAINED);
++#endif
+ 				break;
+ 		}
+ 		break;
+@@ -463,7 +465,7 @@ void MessagePump (const SDL_Event &sev)
+ void I_GetEvent ()
+ {
+ 	SDL_Event sev;
+-	
++
+ 	while (SDL_PollEvent (&sev))
+ 	{
+ 		MessagePump (sev);
+diff --git a/src/posix/sdl/i_main.cpp b/src/posix/sdl/i_main.cpp
+index 7c08dac..eadbb44 100644
+--- a/src/posix/sdl/i_main.cpp
++++ b/src/posix/sdl/i_main.cpp
+@@ -322,7 +322,7 @@ int main (int argc, char **argv)
+ 		if (error.GetMessage ())
+ 			fprintf (stderr, "%s\n", error.GetMessage ());
+ 
+-#ifdef __APPLE__
++#if defined(__APPLE__) && !defined(__IOS__)
+ 		Mac_I_FatalError(error.GetMessage());
+ #endif // __APPLE__
+ 
+diff --git a/src/posix/sdl/sdlglvideo.cpp b/src/posix/sdl/sdlglvideo.cpp
+index 54506b8..7ce27a7 100644
+--- a/src/posix/sdl/sdlglvideo.cpp
++++ b/src/posix/sdl/sdlglvideo.cpp
+@@ -432,7 +432,7 @@ bool SDLGLFB::IsValid ()
+ 
+ void SDLGLFB::SetVSync( bool vsync )
+ {
+-#if defined (__APPLE__)
++#if defined (__APPLE__) && !defined(__IOS__)
+ 	const GLint value = vsync ? 1 : 0;
+ 	CGLSetParameter( CGLGetCurrentContext(), kCGLCPSwapInterval, &value );
+ #endif
+diff --git a/src/posix/sdl/sdlvideo.cpp b/src/posix/sdl/sdlvideo.cpp
+index 9da52c2..c9110e2 100644
+--- a/src/posix/sdl/sdlvideo.cpp
++++ b/src/posix/sdl/sdlvideo.cpp
+@@ -16,10 +16,16 @@
+ 
+ #include <SDL.h>
+ 
++#ifdef USE_GLES
++
++#else
++
+ #ifdef __APPLE__
+ #include <OpenGL/OpenGL.h>
+ #endif // __APPLE__
+ 
++#endif
++
+ // MACROS ------------------------------------------------------------------
+ 
+ // TYPES -------------------------------------------------------------------
+@@ -718,7 +724,7 @@ void SDLFB::ResetSDLRenderer ()
+ 
+ void SDLFB::SetVSync (bool vsync)
+ {
+-#ifdef __APPLE__
++#if defined(__APPLE__) && !defined(__IOS__)
+ 	if (CGLContextObj context = CGLGetCurrentContext())
+ 	{
+ 		// Apply vsync for native backend only (where OpenGL context is set)
+diff --git a/src/r_things.cpp b/src/r_things.cpp
+index 8e53fb6..3b253f3 100644
+--- a/src/r_things.cpp
++++ b/src/r_things.cpp
+@@ -928,7 +928,11 @@ void R_ProjectSprite (AActor *thing, int fakeside, F3DFloor *fakefloor, F3DFloor
+ 		if (voxelspin != 0)
+ 		{
+ 			double ang = double(I_FPSTime()) * voxelspin / 1000;
++#ifdef __arm__
++			vis->angle -= angle_t((int)(ang * (4294967296.f / 360)));
++#else
+ 			vis->angle -= angle_t(ang * (4294967296.f / 360));
++#endif
+ 		}
+ 
+ 		vis->vx = viewx;
+diff --git a/src/sound/i_sound.cpp b/src/sound/i_sound.cpp
+index 78c4526..049bf1d 100644
+--- a/src/sound/i_sound.cpp
++++ b/src/sound/i_sound.cpp
+@@ -53,7 +53,12 @@ extern HINSTANCE g_hInst;
+ #include <math.h>
+ 
+ #include "except.h"
++#ifdef __IOSkk__
++#include "fmodsound_studio.h"
++#else
+ #include "fmodsound.h"
++#endif
++
+ #include "oalsound.h"
+ 
+ #include "mpg123_decoder.h"
+diff --git a/src/sound/music_midi_timidity.cpp b/src/sound/music_midi_timidity.cpp
+index 9f50b41..b5ebc1a 100644
+--- a/src/sound/music_midi_timidity.cpp
++++ b/src/sound/music_midi_timidity.cpp
+@@ -440,6 +440,7 @@ bool TimidityPPMIDIDevice::LaunchTimidity ()
+ 	int forkres;
+ 	wordexp_t words = {};
+ 
++#ifndef __IOS__
+ 	switch (wordexp (CommandLine.GetChars(), &words, 0))
+ 	{
+ 	case 0: // all good
+@@ -450,7 +451,8 @@ bool TimidityPPMIDIDevice::LaunchTimidity ()
+ 	default:
+ 		return false;
+ 	}
+-
++#endif
++    
+ 	forkres = fork ();
+ 
+ 	if (forkres == 0)
+@@ -481,8 +483,9 @@ bool TimidityPPMIDIDevice::LaunchTimidity ()
+ 		    fprintf(stderr,"Launching timidity failed\n");
+ 		}*/
+ 	}
+-	
++#ifndef __IOS__
+ 	wordfree (&words);
++#endif
+ 	return ChildProcess != -1;
+ #endif // _WIN32
+ }
+diff --git a/src/tables.h b/src/tables.h
+index dbe9af0..746400b 100644
+--- a/src/tables.h
++++ b/src/tables.h
+@@ -114,7 +114,11 @@ inline double bam2rad(angle_t ang)
+ }
+ inline angle_t rad2bam(double ang)
+ {
+-	return angle_t(ang * (double(1<<30) / PI)) << 1;
++#ifdef __arm__
++    return angle_t((int)(ang * (double(1<<30) / PI))) << 1;
++#else
++    return angle_t(ang * (double(1<<30) / PI)) << 1;
++#endif
+ }
+ 
+ #endif // __TABLES_H__
+diff --git a/src/thingdef/thingdef.h b/src/thingdef/thingdef.h
+index 5225b78..cf90fb4 100644
+--- a/src/thingdef/thingdef.h
++++ b/src/thingdef/thingdef.h
+@@ -429,8 +429,27 @@ FName EvalExpressionName (DWORD x, AActor *self);
+ 	const char *var = EvalExpressionName(ParameterIndex+i, self);
+ #define ACTION_PARAM_NAME(var,i) \
+ 	FName var = EvalExpressionName(ParameterIndex+i, self);
++
++#ifdef __arm__
++//WTF is wrong with the ARM compiler??
++#define ACTION_PARAM_ANGLE(var,i) \
++float var##temp_android = EvalExpressionF(ParameterIndex+i, self); \
++float var##temp_android2 = var##temp_android * ((float)ANGLE_90 / 90.f); \
++angle_t var; \
++if (var##temp_android2 < 0) \
++{ \
++    var = -(var##temp_android2); \
++    var = -var; \
++} \
++else \
++{ \
++    var = (var##temp_android2); \
++}
++#else
++
+ #define ACTION_PARAM_ANGLE(var,i) \
+-	angle_t var = angle_t(EvalExpressionF(ParameterIndex+i, self)*ANGLE_90/90.f);
++angle_t var = angle_t(EvalExpressionF(ParameterIndex+i, self)*ANGLE_90/90.f);
++#endif
+ 
+ #define ACTION_SET_RESULT(v) if (statecall != NULL) statecall->Result = v;
+ 
+diff --git a/src/thingdef/thingdef_codeptr.cpp b/src/thingdef/thingdef_codeptr.cpp
+index 89299e0..854d4d8 100644
+--- a/src/thingdef/thingdef_codeptr.cpp
++++ b/src/thingdef/thingdef_codeptr.cpp
+@@ -2223,7 +2223,11 @@ DEFINE_ACTION_FUNCTION_PARAMS(AActor, A_ThrowGrenade)
+ 			bo->Speed = xyvel;
+ 		bo->angle = self->angle + (((pr_grenade()&7) - 4) << 24);
+ 
++#ifdef __arm__
++		angle_t pitch = angle_t((int)(-self->pitch)) >> ANGLETOFINESHIFT;
++#else
+ 		angle_t pitch = angle_t(-self->pitch) >> ANGLETOFINESHIFT;
++#endif
+ 		angle_t angle = bo->angle >> ANGLETOFINESHIFT;
+ 
+ 		// There are two vectors we are concerned about here: xy and z. We rotate
+@@ -2235,7 +2239,11 @@ DEFINE_ACTION_FUNCTION_PARAMS(AActor, A_ThrowGrenade)
+ 		fixed_t xy_velx = FixedMul(xy_xyscale, finecosine[angle]);
+ 		fixed_t xy_vely = FixedMul(xy_xyscale, finesine[angle]);
+ 
++#ifdef __arm__
++		pitch = angle_t((int)(self->pitch)) >> ANGLETOFINESHIFT;
++#else
+ 		pitch = angle_t(self->pitch) >> ANGLETOFINESHIFT;
++#endif
+ 		fixed_t z_xyscale = FixedMul(zvel, finesine[pitch]);
+ 		fixed_t z_velz = FixedMul(zvel, finecosine[pitch]);
+ 		fixed_t z_velx = FixedMul(z_xyscale, finecosine[angle]);
+diff --git a/src/thingdef/thingdef_function.cpp b/src/thingdef/thingdef_function.cpp
+index fcc9360..56d3754 100644
+--- a/src/thingdef/thingdef_function.cpp
++++ b/src/thingdef/thingdef_function.cpp
+@@ -144,7 +144,11 @@ public:
+ 		ret.Type = VAL_Float;
+ 
+ 		// shall we use the CRT's sin and cos functions?
++#ifdef __arm__
++		angle_t angle = angle_t((int)(v * ANGLE_90/90.));
++#else
+ 		angle_t angle = angle_t(v * ANGLE_90/90.);
++#endif
+ 		if (Name == NAME_Sin) ret.Float = FIXED2DBL (finesine[angle>>ANGLETOFINESHIFT]);
+ 		else ret.Float = FIXED2DBL (finecosine[angle>>ANGLETOFINESHIFT]);
+ 		return ret;
+@@ -293,4 +297,4 @@ class FxGlobalFunctionCall_IsPointerEqual : public FxGlobalFunctionCall
+ 		}
+ };
+ 
+-GLOBALFUNCTION_ADDER(IsPointerEqual);
+\ No newline at end of file
++GLOBALFUNCTION_ADDER(IsPointerEqual);
+diff --git a/src/v_video.cpp b/src/v_video.cpp
+index d48bd91..b9eff80 100644
+--- a/src/v_video.cpp
++++ b/src/v_video.cpp
+@@ -1542,7 +1542,7 @@ void V_Init (bool restart)
+ 
+ 		if ( (i = Args->CheckValue ("-bits")) )
+ 			bits = atoi (i);
+-
++        
+ 		if (width == 0)
+ 		{
+ 			if (height == 0)
+@@ -1578,8 +1578,15 @@ void V_Init (bool restart)
+ 	BuildTransTable (GPalette.BaseColors);
+ }
+ 
++extern "C" void jwzgles_reset (void);
++
+ void V_Init2()
+ {
++    
++#ifdef USE_GLES
++    jwzgles_reset ();
++#endif
++    
+ 	assert (screen->IsKindOf(RUNTIME_CLASS(DDummyFrameBuffer)));
+ 	int width = screen->GetWidth();
+ 	int height = screen->GetHeight();
+@@ -1594,7 +1601,7 @@ void V_Init2()
+ 
+ 	I_InitGraphics();
+ 	I_ClosestResolution (&width, &height, 8);
+-
++    
+ 	if (!Video->SetResolution (width, height, 8))
+ 		I_FatalError ("Could not set resolution to %d x %d x %d", width, height, 8);
+ 	else
+diff --git a/src/zstrformat.cpp b/src/zstrformat.cpp
+index c048595..5170bf0 100644
+--- a/src/zstrformat.cpp
++++ b/src/zstrformat.cpp
+@@ -1034,11 +1034,17 @@ int myvsnprintf(char *buffer, size_t count, const char *format, va_list argptr)
+ 
+ int mysnprintf(char *buffer, size_t count, const char *format, ...)
+ {
++#ifdef __IOS__
++    va_list argptr;
++    va_start(argptr, format);
++    return vsnprintf(buffer,count,format,argptr);
++#else
+ 	va_list argptr;
+ 	va_start(argptr, format);
+ 	int len = myvsnprintf(buffer, count, format, argptr);
+ 	va_end(argptr);
+ 	return len;
++#endif
+ }
+ 
+ }
+-- 
+2.5.4 (Apple Git-61)
+
